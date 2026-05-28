@@ -13,15 +13,24 @@ interface Entry {
 
 const store = new Map<string, Entry>();
 let lastCleanup = Date.now();
-const CLEANUP_INTERVAL = 60_000;
+
+// ── Cleanup ────────────────────────────────────────────────────────────────
+// CLEANUP_INTERVAL controls how often expired entries are evicted.
+// The cleanup is debounced: it runs at most once per interval and never
+// blocks the hot path – it only fires when a request triggers it and the
+// interval has elapsed, keeping the Map bounded without synchronous GC pressure.
+const CLEANUP_INTERVAL = 60_000; // 1 minute
 
 function cleanup() {
   const now = Date.now();
   if (now - lastCleanup < CLEANUP_INTERVAL) return;
   lastCleanup = now;
-  for (const [key, entry] of store) {
-    if (now > entry.resetAt) store.delete(key);
-  }
+  // Run asynchronously so cleanup never adds latency to the caller.
+  Promise.resolve().then(() => {
+    for (const [key, entry] of store) {
+      if (Date.now() > entry.resetAt) store.delete(key);
+    }
+  });
 }
 
 /**
