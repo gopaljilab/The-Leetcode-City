@@ -128,10 +128,33 @@ export async function middleware(request: NextRequest) {
       },
     );
 
-    await supabase.auth.getUser();
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser();
+
+      // If Supabase returns an auth error, handle it explicitly.
+      if (error) {
+        console.error(
+          "Supabase authentication validation failed:",
+          error.message || error,
+        );
+
+        // Proceed as anonymous: do not block request lifecycle.
+      } else {
+        // `user` is intentionally unused here; middleware only needs to
+        // validate/refresh session cookies.
+      }
+    } catch (error) {
+      // Network failures / invalid session / infra drops can throw.
+      console.error(
+        "Supabase authentication validation threw an error:",
+        error instanceof Error ? error.message : error,
+      );
+
+      // Proceed as anonymous: do not crash middleware.
+    }
   }
 
-  // ── 3. Security headers ─────────────────────────────────────────────
+  // ── 3. Security headers
   supabaseResponse.headers.set("X-Frame-Options", "DENY");
   supabaseResponse.headers.set("X-Content-Type-Options", "nosniff");
   supabaseResponse.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
