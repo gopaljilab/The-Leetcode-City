@@ -13,6 +13,8 @@ const WINDOW_5_MIN_MS  = 300_000;  //  5 minutes – reserved for future use
 // Route-specific rate limits: [pathPrefix, maxRequests, windowMs]
 // Order matters: most-specific prefix must appear before any parent prefix.
 // ---------------------------------------------------------------------------
+const WINDOW_1_MIN_MS = 60_000; // 1 minute
+
 const ROUTE_LIMITS: [string, number, number][] = [
   ["/api/customizations/upload", 5,  WINDOW_1_MIN_MS],
   ["/api/customizations",        10, WINDOW_1_MIN_MS],
@@ -49,8 +51,34 @@ const IPV6_RE = /^[0-9a-fA-F:]+$/;
 function isValidIp(ip: string): boolean {
   return IPV4_RE.test(ip) || IPV6_RE.test(ip);
 }
+  // Exact-prefix match – order from most-specific to least-specific
+  ["/api/customizations/upload", 5, WINDOW_1_MIN_MS],
+  ["/api/customizations", 10, WINDOW_1_MIN_MS],
+  ["/api/sky-ads/track", 30, WINDOW_1_MIN_MS],
+  ["/api/sky-ads", 30, WINDOW_1_MIN_MS],
+  ["/api/raid", 15, WINDOW_1_MIN_MS],
+  ["/api/checkin", 10, WINDOW_1_MIN_MS],
+  ["/api/heartbeats", 60, WINDOW_1_MIN_MS],
+  ["/api/interactions/kudos", 20, WINDOW_1_MIN_MS],
+  ["/api/interactions/visit", 50, WINDOW_1_MIN_MS],
+  ["/api/interactions", 60, WINDOW_1_MIN_MS],
+  ["/api/achievements", 30, WINDOW_1_MIN_MS],
+  ["/api/loadout", 10, WINDOW_1_MIN_MS],
+  ["/api/feed", 30, WINDOW_1_MIN_MS],
+  ["/api/checkout/status", 40, WINDOW_1_MIN_MS],
+  ["/api/checkout", 6, WINDOW_1_MIN_MS],
+  ["/api/claim", 5, WINDOW_1_MIN_MS],
+  ["/api/city", 30, WINDOW_1_MIN_MS],
+  ["/api/dev/", 60, WINDOW_1_MIN_MS],
+  ["/api/items", 30, WINDOW_1_MIN_MS],
+  ["/api/auth", 10, WINDOW_1_MIN_MS],
+];
+
+const DEFAULT_API: [number, number] = [60, WINDOW_1_MIN_MS];
+const DEFAULT_PAGE: [number, number] = [120, WINDOW_1_MIN_MS];
 
 function getLimitForPath(pathname: string): {
+
   limit: number;
   window: number;
   group: string;
@@ -70,6 +98,7 @@ function getLimitForPath(pathname: string): {
   if (pathname.startsWith("/api/webhooks")) {
     return { limit: 1000, window: WINDOW_1_MIN_MS, group: "webhooks" };
   }
+
 
   for (const [prefix, limit, window] of ROUTE_LIMITS) {
     if (pathname.startsWith(prefix)) {
@@ -176,12 +205,20 @@ export async function middleware(request: NextRequest) {
 
     try {
       const { error } = await supabase.auth.getUser();
+      const { data: { user }, error } = await supabase.auth.getUser();
+
+      // If Supabase returns an auth error, handle it explicitly.
       if (error) {
         console.error(
           "Supabase authentication validation failed:",
           error.message || error,
         );
         // Proceed as anonymous: do not block request lifecycle.
+
+        // Proceed as anonymous: do not block request lifecycle.
+      } else {
+        // `user` is intentionally unused here; middleware only needs to
+        // validate/refresh session cookies.
       }
     } catch (error) {
       // Network failures / invalid session / infra drops can throw.
@@ -189,11 +226,13 @@ export async function middleware(request: NextRequest) {
         "Supabase authentication validation threw an error:",
         error instanceof Error ? error.message : error,
       );
+
       // Proceed as anonymous: do not crash middleware.
     }
   }
 
   // ── 3. Security headers ──────────────────────────────────────────────
+  // ── 3. Security headers
   supabaseResponse.headers.set("X-Frame-Options", "DENY");
   supabaseResponse.headers.set("X-Content-Type-Options", "nosniff");
   supabaseResponse.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
